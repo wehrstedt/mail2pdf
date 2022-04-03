@@ -13,11 +13,11 @@ const { isText } = require('istextorbinary');
 const libre = require('libreoffice-convert');
 libre.convertAsync = require('util').promisify(libre.convert);
 const promises = [];
+const uids = [];
 let processResolve = null;
 
 function handleError(err) {
 	try {
-		console.log("HANDLE ERRORö")
 		console.error(err);
 		imap.end();
 	} finally {
@@ -85,7 +85,6 @@ function convertText2Pdf(filePath) {
 		const writeStream = fs.createWriteStream(outFilePath);
 		writeStream.on("error", reject);
 		writeStream.on("finish", () => {
-			fs.rmSync(filePath);
 			resolve(outFilePath);
 		});
 
@@ -103,12 +102,11 @@ function convertImage2Pdf(filePath) {
 		const writeStream = fs.createWriteStream(outFilePath);
 		writeStream.on("error", reject);
 		writeStream.on("finish", () => {
-			fs.rmSync(filePath);
 			resolve(outFilePath);
 		});
 
 		pdfDoc.pipe(writeStream);
-		pdfDoc.image(filePath);
+		pdfDoc.image(filePath, 0, 15, { width: 500 });
 		pdfDoc.end();
 	});
 }
@@ -175,20 +173,55 @@ async function mergePdfs(bodyPdf, mailMetaPdfFilePath, others) {
 
 	const targetPath = path.join(path.dirname(bodyPdf), path.basename(bodyPdf, ".pdf") + "_merged.pdf");
 	await merger.save(targetPath);
+	return targetPath
+}
 
-	// remove all other files
-	for (const fileToRemove of [bodyPdf, ...others]) {
-		fs.rmSync(fileToRemove);
+async function afterMailsFetched(imap) {
+	await Promise.all(promises);
+
+	// Process all saved mails
+	const mailIds = fs.readdirSync(OUT_FOLDER);
+	for (const mailId of mailIds) {
+		console.log("\nProcess mail " + mailId);
+		const folderPath = path.join(OUT_FOLDER, mailId);
+
+		// convert mail body html to pdf
+		const mailBodyHtmlFilePath = path.join(folderPath, mailId + ".html");
+		const mailBodyPdfFilePath = await convertHtml2Pdf(mailBodyHtmlFilePath);
+
+		// convert meta data file to pdf
+		const mailMetaTextFilePath = path.join(folderPath, mailId + "_meta.txt");
+		const mailMetaPdfFilePath = await convertText2Pdf(mailMetaTextFilePath);
+
+		// all other files = attachments. Merge all files into one pdf
+		const attachments = fs.readdirSync(folderPath).filter(
+			f => f !== mailId + ".pdf" && f !== mailId + ".html" && f !== mailId + "_meta.pdf" && f !== mailId + "_meta.txt");
+		const mergedPdfPath = await mergePdfs(mailBodyPdfFilePath, mailMetaPdfFilePath, attachments.map(a => path.join(folderPath, a)));
+		fs.renameSync(mergedPdfPath, path.join(PROCESSED_OUT_FOLDER, path.basename(mergedPdfPath)));
+
+		// remove processed mail
+		fs.rmSync(folderPath, { recursive: true });
+		console.log("  => Mail " + mailId + " processed.");
 	}
 
-	return targetPath
+	if (uids.length > 0) {
+		// Uncomment this if you want to delete the mails after processed
+		// imap.setFlags(uids, ['\\Deleted'], function(err) {
+		// 	if (err) {
+		// 		handleError(err);
+		// 	} else {
+		// 		imap.end();
+		// 		processResolve();
+		// 	}
+		// });
+	}
 }
 
 (async () => {
 	if (!fs.existsSync(OUT_FOLDER)) {
 		fs.mkdirSync(OUT_FOLDER);
 	}
-	
+
 	if (!fs.existsSync(PROCESSED_OUT_FOLDER)) {
 		fs.mkdirSync(PROCESSED_OUT_FOLDER);
 	}
@@ -196,81 +229,66 @@ async function mergePdfs(bodyPdf, mailMetaPdfFilePath, others) {
 	const configs = fs.readdirSync("conf")
 		.filter(c => c !== "sample.json")
 		.map(p => path.join("conf", p));
-	
+
 	for (const configPath of configs) {
 		await new Promise((resolve, reject) => {
 			processResolve = resolve;
 			const imap = new Imap(JSON.parse(fs.readFileSync(configPath).toString()));
 
 			imap.once('ready', function() {
-				imap.openBox('INBOX/Paperless', true, function(err, box) {
+				imap.openBox('INBOX/Paperless', false, function(err, box) {
 					if (err) {
 						handleError(err);
 					}
 
-					// const f = imap.seq.fetch('UNSEEN', { bodies: '' });
-					const f = imap.seq.fetch('1:20', { bodies: '' });
-					f.on('message', function(msg, seqno) {
-						msg.on('body', function(stream, info) {
-							promises.push(new Promise((resolve) => {
-								simpleParser(stream, (err, mail) => {
-									if (err) {
-										handleError(err);
-									}
+					imap.search(['UNSEEN'], function(err, results) {
+						if (results.length > 0) {
+							const f = imap.fetch(results, {
+								bodies: '',
+								markSeen: true
+							});
 
-									const mailId = getMailId(mail);
-									saveMail(mailId, mail);
-									resolve();
+							f.on('message', function(msg, seqno) {
+								msg.once('attributes', function(attrs) {
+									uids.push(attrs.uid);
 								});
-							}));
-						});
-					});
 
-					f.once('error', function(err) {
-						console.log(err);
-					});
+								msg.on('body', function(stream, info) {
+									promises.push(new Promise((resolve) => {
+										simpleParser(stream, (err, mail) => {
+											if (err) {
+												handleError(err);
+											}
 
-					f.once('end', function() {
-						console.log('Done fetching all messages!');
-						imap.end();
+											const mailId = getMailId(mail);
+											saveMail(mailId, mail);
+											resolve();
+										});
+									}));
+								});
+							});
+
+							f.once('error', function(err) {
+								console.log(err);
+							});
+
+							f.once('end', function() {
+								console.log('Done fetching all messages!');
+								afterMailsFetched(imap);
+							});
+						} else {
+							imap.end();
+						}
 					});
 				});
 			});
 
-			imap.once('error', function(err) {
-				handleError(err);
-			});
-
 			imap.once('end', async function() {
 				console.log('Connection ended');
-				await Promise.all(promises);
+			});
 
-				// Process all saved mails
-				const mailIds = fs.readdirSync(OUT_FOLDER);
-				for (const mailId of mailIds) {
-					console.log("Process mail " + mailId);
-					const folderPath = path.join(OUT_FOLDER, mailId);
-
-					// convert mail body html to pdf
-					const mailBodyHtmlFilePath = path.join(folderPath, mailId + ".html");
-					const mailBodyPdfFilePath = await convertHtml2Pdf(mailBodyHtmlFilePath);
-					fs.rmSync(mailBodyHtmlFilePath);
-
-					// convert meta data file to pdf
-					const mailMetaTextFilePath = path.join(folderPath, mailId + "_meta.txt");
-					const mailMetaPdfFilePath = await convertText2Pdf(mailMetaTextFilePath);
-
-					// all other files = attachments. Merge all files into one pdf
-					const attachments = fs.readdirSync(folderPath).filter(f => f !== mailId + ".pdf" && f !== mailId + "_meta.pdf");
-					const mergedPdfPath = await mergePdfs(mailBodyPdfFilePath, mailMetaPdfFilePath, attachments.map(a => path.join(folderPath, a)));
-					fs.renameSync(mergedPdfPath, path.join(PROCESSED_OUT_FOLDER, path.basename(mergedPdfPath)));
-
-					// remove processed mail
-					fs.rmSync(folderPath, { recursive: true });
-					console.log("  => Mail " + mailId + " processed.\n");
-				}
-
-				processResolve();
+			imap.once('error', function(err) {
+				handleError(err);
 			});
 
 			imap.connect();
