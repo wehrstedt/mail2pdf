@@ -171,7 +171,7 @@ async function mergePdfs(bodyPdf, mailMetaPdfFilePath, others) {
 		}
 	}
 
-	const targetPath = path.join(path.dirname(bodyPdf), path.basename(bodyPdf, ".pdf") + "_merged.pdf");
+	const targetPath = path.join(path.dirname(bodyPdf), path.basename(bodyPdf, ".pdf") + "_merged_" + Date.now() + ".pdf");
 	await merger.save(targetPath);
 	return targetPath
 }
