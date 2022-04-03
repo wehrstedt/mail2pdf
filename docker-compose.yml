@@ -1,0 +1,15 @@
+version: '3'
+services:
+
+  mail2pdf:
+    image: mail2pdf
+    build:
+      context: .
+    volumes:
+      - mails-to-process:/home/node/app/mails-to-process
+      - processed-mails:/home/node/app/processed-mails
+      - ./conf:/home/node/app/conf
+
+volumes:
+  mails-to-process:
+  processed-mails:
