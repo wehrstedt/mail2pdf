@@ -1,19 +1,19 @@
 const Imap = require('imap');
-const inspect = require('util').inspect;
 const fs = require('fs');
 const path = require("path");
-const crypto = require('crypto');
 const simpleParser = require('mailparser').simpleParser;
 const html2pdf = require('html-pdf-node');
 const PDFMerger = require('pdf-merger-js');
 const PDFDocument = require('pdfkit');
-const OUT_FOLDER = "mails-to-process";
-const PROCESSED_OUT_FOLDER = "processed-mails";
 const { isText } = require('istextorbinary');
 const libre = require('libreoffice-convert');
-libre.convertAsync = require('util').promisify(libre.convert);
 const promises = [];
 const uids = [];
+
+const config = JSON.parse(fs.readFileSync("mailer.conf.json").toString());
+const OUT_FOLDER = "mails-to-process";
+const PROCESSED_OUT_FOLDER = config.outputFolder;
+
 let processResolve = null;
 
 function handleError(err) {
@@ -176,7 +176,7 @@ async function mergePdfs(bodyPdf, mailMetaPdfFilePath, others) {
 	return targetPath
 }
 
-async function afterMailsFetched(imap) {
+async function afterMailsFetched(imap, mailboxConfig) {
 	await Promise.all(promises);
 
 	// Process all saved mails
@@ -204,16 +204,17 @@ async function afterMailsFetched(imap) {
 		console.log("  => Mail " + mailId + " processed.");
 	}
 
-	if (uids.length > 0) {
-		// Uncomment this if you want to delete the mails after processed
-		// imap.setFlags(uids, ['\\Deleted'], function(err) {
-		// 	if (err) {
-		// 		handleError(err);
-		// 	} else {
-		// 		imap.end();
-		// 		processResolve();
-		// 	}
-		// });
+	if (uids.length > 0 && mailboxConfig.deleteAfterProcess) {
+		imap.setFlags(uids, ['\\Deleted'], function(err) {
+			if (err) {
+				handleError(err);
+			} else {
+				imap.end();
+				processResolve();
+			}
+		});
+	} else {
+		processResolve();
 	}
 }
 
@@ -226,22 +227,18 @@ async function afterMailsFetched(imap) {
 		fs.mkdirSync(PROCESSED_OUT_FOLDER);
 	}
 
-	const configs = fs.readdirSync("conf")
-		.filter(c => c !== "sample.json")
-		.map(p => path.join("conf", p));
-
-	for (const configPath of configs) {
+	for (const mailboxConfig of config.mailboxes) {
 		await new Promise((resolve, reject) => {
 			processResolve = resolve;
-			const imap = new Imap(JSON.parse(fs.readFileSync(configPath).toString()));
+			const imap = new Imap(mailboxConfig);
 
 			imap.once('ready', function() {
-				imap.openBox('INBOX/Paperless', false, function(err, box) {
+				imap.openBox(mailboxConfig.inboxPath, false, function(err, box) {
 					if (err) {
 						handleError(err);
 					}
 
-					imap.search(['UNSEEN'], function(err, results) {
+					imap.search(mailboxConfig.searchQuery, function(err, results) {
 						if (results.length > 0) {
 							const f = imap.fetch(results, {
 								bodies: '',
@@ -274,7 +271,7 @@ async function afterMailsFetched(imap) {
 
 							f.once('end', function() {
 								console.log('Done fetching all messages!');
-								afterMailsFetched(imap);
+								afterMailsFetched(imap, mailboxConfig);
 							});
 						} else {
 							imap.end();
@@ -294,4 +291,8 @@ async function afterMailsFetched(imap) {
 			imap.connect();
 		});
 	}
+
+	console.log("\nAll mails processed.");
+	process.exit(0);
+
 })();

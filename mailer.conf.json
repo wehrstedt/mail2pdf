@@ -1,0 +1,17 @@
+{
+	"outputFolder": "processed-mails",
+	"mailboxes": [
+		{
+			"user": "me@outlook.de",
+			"password": "super-duper",
+			"host": "outlook.office365.com",
+			"port": 993,
+			"tls": true,
+			"deleteAfterProcess": false,
+			"inboxPath": "INBOX/Paperless",
+			"searchQuery": [
+				"UNSEEN"
+			]
+		}
+	]
+}

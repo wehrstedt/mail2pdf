@@ -1,5 +1,3 @@
 node_modules/
 mails-to-process/
 processed-mails/
-conf/*
-!conf/sample.json
