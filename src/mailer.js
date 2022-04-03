@@ -234,11 +234,12 @@ const fs = require('fs');
 							process.exit(1);
 						} else {
 							imap.end();
+							resolve();
 						}
 					});
+				} else {
+					resolve();
 				}
-
-				resolve();
 			});
 		}
 
@@ -322,7 +323,6 @@ const fs = require('fs');
 			});
 
 			await handleProcessedMails(imap, mailboxConfig);
-			imap.end();
 		}
 
 		console.log("\nAll mails processed.");
