@@ -1,6 +1,12 @@
 const Imap = require('imap');
 const fs = require('fs');
 
+function notifyMonitoring() {
+	const services = JSON.parse(fs.readFileSync("/home/max/git/monitoring/services.json").toString());
+	services["mail2pdf"].lastSeen = Date.now();
+	fs.writeFileSync("/home/max/git/monitoring/services.json", JSON.stringify(services, null, "\t"));
+}
+
 (async () => {
 	try {
 		process.on("exit", (code) => {
@@ -29,12 +35,12 @@ const fs = require('fs');
 		const _log = console.log;
 		const _error = console.error;
 		console.log = (msg) => {
-			fs.appendFileSync("/home/max/mail2pdf/console.log", new Date().toLocaleDateString() + " " + new Date().toLocaleTimeString() + " - " + msg + "\n");
+			fs.appendFileSync(path.join(__dirname, "..", "console.log"), new Date().toLocaleDateString() + " " + new Date().toLocaleTimeString() + " - " + msg + "\n");
 			_log(msg);
 		};
 
 		console.error = (msg) => {
-			fs.appendFileSync("/home/max/mail2pdf/console.error", new Date().toLocaleDateString() + " " + new Date().toLocaleTimeString() + " - " + msg + "\n");
+			fs.appendFileSync(path.join(__dirname, "..", "console.error"), new Date().toLocaleDateString() + " " + new Date().toLocaleTimeString() + " - " + msg + "\n");
 			_error(msg);
 		};
 
@@ -326,11 +332,12 @@ const fs = require('fs');
 		}
 
 		console.log("\nAll mails processed.");
+		notifyMonitoring();
 		process.exit(0);
 
 	} catch (err) {
-		fs.appendFileSync("/home/max/mail2pdf/console.error", err.toString());
-		fs.appendFileSync("/home/max/mail2pdf/console.error", process.cwd());
+		fs.appendFileSync(path.join(__dirname, "..", "console.error", err.toString()));
+		fs.appendFileSync(path.join(__dirname, "..", "console.error", process.cwd()));
 		process.exit(1)
 	}
 })();

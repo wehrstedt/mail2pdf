@@ -1,9 +1,21 @@
 {
-	"outputFolder": "processed-mails",
+	"outputFolder": "/home/max/docker/paperless/consume",
 	"mailboxes": [
 		{
-			"user": "me@outlook.de",
-			"password": "super-duper",
+			"user": "maximilian.wehrstedt@outlook.de",
+			"password": "mixfhkznbvnqbexy",
+			"host": "outlook.office365.com",
+			"port": 993,
+			"tls": true,
+			"deleteAfterProcess": false,
+			"inboxPath": "INBOX/Paperless",
+			"searchQuery": [
+				"UNSEEN"
+			]
+		},
+		{
+			"user": "wehrma@outlook.de",
+			"password": "ehnibzjdvgfaqlrb",
 			"host": "outlook.office365.com",
 			"port": 993,
 			"tls": true,
