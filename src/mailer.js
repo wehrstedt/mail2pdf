@@ -1,10 +1,12 @@
 const Imap = require('imap');
 const fs = require('fs');
+const path = require("path");
 
 function notifyMonitoring() {
 	const services = JSON.parse(fs.readFileSync("/home/max/git/monitoring/services.json").toString());
 	services["mail2pdf"].lastSeen = Date.now();
 	fs.writeFileSync("/home/max/git/monitoring/services.json", JSON.stringify(services, null, "\t"));
+	console.log("Monitoring notified");
 }
 
 (async () => {
@@ -14,7 +16,6 @@ function notifyMonitoring() {
 		});
 
 		// Fix cwd when starting via cron
-		const path = require("path");
 		const dir = path.join(__dirname, "..");
 		process.chdir(dir);
 
@@ -322,7 +323,9 @@ function notifyMonitoring() {
 				});
 
 				imap.once('error', function(err) {
-					console.error(err)
+					console.error(err);
+					imap.end();
+					reject(err);
 				});
 
 				imap.connect();
@@ -336,8 +339,8 @@ function notifyMonitoring() {
 		process.exit(0);
 
 	} catch (err) {
-		fs.appendFileSync(path.join(__dirname, "..", "console.error", err.toString()));
-		fs.appendFileSync(path.join(__dirname, "..", "console.error", process.cwd()));
+		fs.appendFileSync(path.join(__dirname, "..", "console.error"), err.toString());
+		fs.appendFileSync(path.join(__dirname, "..", "console.error"), process.cwd());
 		process.exit(1)
 	}
 })();
