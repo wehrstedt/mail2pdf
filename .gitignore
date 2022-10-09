@@ -1,3 +1,6 @@
 node_modules/
 mails-to-process/
 processed-mails/
+mailer.conf.json
+console.error
+console.log
