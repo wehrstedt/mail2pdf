@@ -1,0 +1,17 @@
+{
+	"outputFolder": "/home/max/docker/paperless/consume",
+	"mailboxes": [
+		{
+			"user": "john.doe@outlook.de",
+			"password": "12345",
+			"host": "outlook.office365.com",
+			"port": 993,
+			"tls": true,
+			"deleteAfterProcess": false,
+			"inboxPath": "INBOX/Paperless",
+			"searchQuery": [
+				"UNSEEN"
+			]
+		}
+	]
+}
