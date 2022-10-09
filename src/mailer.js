@@ -240,8 +240,21 @@ function notifyMonitoring() {
 							console.error(err);
 							process.exit(1);
 						} else {
-							imap.end();
-							resolve();
+							if (mailboxConfig.targetInboxPath) {
+								console.log("Move mails to " + mailboxConfig.targetInboxPath);
+								imap.move(uids, mailboxConfig.targetInboxPath, function(err) {
+									if (err) {
+										console.error(err);
+										process.exit(1);
+									} else {
+										imap.end();
+										resolve();
+									}
+								});
+							} else {
+								imap.end();
+								resolve();
+							}
 						}
 					});
 				} else {
